@@ -1,45 +1,77 @@
 package com.munload.vpn
 
+import android.app.Activity
 import android.content.Intent
 import android.net.VpnService
-import android.os.ParcelFileDescriptor
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 
-class MyVpnService : VpnService() {
-
-    private var vpnInterface: ParcelFileDescriptor? = null
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "START") {
-            startVpn()
-        } else if (intent?.action == "STOP") {
-            stopVpn()
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    VpnScreen()
+                }
+            }
         }
-        return START_STICKY
+    }
+}
+
+@Composable
+fun VpnScreen() {
+    val context = LocalContext.current
+
+    // Лаунчер для запроса системного разрешения на VPN
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            // Пользователь нажал "ОК" в системном окне — запускаем сервис
+            val intent = Intent(context, MyVpnService::class.java).apply {
+                action = "START"
+            }
+            context.startService(intent)
+        }
     }
 
-    private fun startVpn() {
-        // Настраиваем виртуальный интерфейс (TUN)
-        val builder = Builder()
-            .setSession("TestVPN")
-            .addAddress("10.0.0.2", 32)
-            .addRoute("0.0.0.0", 0)
-            .addDnsServer("8.8.8.8")
-
-        // Устанавливаем соединение
-        vpnInterface = builder.establish()
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = "Сырое VPN приложение", style = MaterialTheme.typography.headlineSmall)
         
-        // После этого в шторке появится значок ключа, но интернет пропадет,
-        // так как мы пока не пересылаем пакеты на сервер.
-    }
+        Spacer(modifier = Modifier.height(32.dp))
 
-    private fun stopVpn() {
-        vpnInterface?.close()
-        vpnInterface = null
-        stopSelf()
-    }
-
-    override fun onDestroy() {
-        stopVpn()
-        super.onDestroy()
+        Button(
+            onClick = {
+                // Проверяем, дано ли разрешение на VPN
+                val intent = VpnService.prepare(context)
+                if (intent != null) {
+                    // Если не дано — показываем системное окно
+                    launcher.launch(intent)
+                } else {
+                    // Если уже дано — запускаем сразу
+                    val serviceIntent = Intent(context, MyVpnService::class.java).apply {
+                        action = "START"
+                    }
+                    context.startService(serviceIntent)
+                }
+            }
+        ) {
+            Text("Включить VPN")
+        }
     }
 }
